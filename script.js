@@ -2,172 +2,281 @@
 
 const $ = selector => document.querySelector(selector);
 
-const form = $("#task-form");
-const input = $("#task-input");
-const dateInput = $("#task-date");
-const priorityInput = $("#task-priority");
+const STORAGE_KEY = "my-todo-tasks";
+const THEME_KEY = "my-todo-theme";
+const DRAFT_KEY = "my-todo-draft";
+const MAX_TASKS = 5000;
+const HISTORY_LIMIT = 30;
 
-const list = $("#task-list");
-const searchInput = $("#search-input");
-const sortSelect = $("#sort-select");
-const filterButtons = document.querySelectorAll(".filter-button");
-
-const emptyState = $("#empty-state");
-const emptyTitle = $("#empty-title");
-const emptyDescription = $("#empty-description");
-
-const clearButton = $("#clear-completed");
-const toggleVisibleButton = $("#toggle-visible");
-const undoButton = $("#undo-button");
-const statusMessage = $("#status-message");
-
-const editDialog = $("#edit-dialog");
-const editForm = $("#edit-form");
-const editText = $("#edit-text");
-const editDate = $("#edit-date");
-const editPriority = $("#edit-priority");
-
-const importFile = $("#import-file");
-const themeButton = $("#theme-toggle");
-
-const storageKey = "my-todo-tasks";
-const themeKey = "my-todo-theme";
-const maxTasks = 5000;
-
-const priorityLabels = {
+const priorities = {
   normal: "Обычный",
   important: "Важный",
   urgent: "Срочный"
 };
 
-const priorityWeights = {
+const categories = {
+  personal: "Личное",
+  work: "Работа",
+  study: "Учёба",
+  home: "Дом",
+  health: "Здоровье",
+  other: "Другое"
+};
+
+const repeats = {
+  none: "Не повторять",
+  daily: "Каждый день",
+  weekly: "Каждую неделю",
+  monthly: "Каждый месяц"
+};
+
+const priorityWeight = {
   normal: 1,
   important: 2,
   urgent: 3
 };
 
+const form = $("#task-form");
+const list = $("#task-list");
+const searchInput = $("#search-input");
+const sortSelect = $("#sort-select");
+const categoryFilter = $("#category-filter");
+const filterButtons = document.querySelectorAll("[data-filter]");
+const editDialog = $("#edit-dialog");
+const importFile = $("#import-file");
+
 let currentFilter = "all";
+let focusMode = false;
 let editingId = null;
-let undoSnapshot = null;
+let selected = new Set();
+let undoStack = [];
+let redoStack = [];
+let storageBlocked = false;
 let tasks = loadTasks();
 
 initializeTheme();
+restoreDraft();
 render();
 
-// ---------- Даты и проверка данных ----------
+// ---------- Общие функции ----------
 
-function getToday() {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-  const day = String(now.getDate()).padStart(2, "0");
-
-  return `${year}-${month}-${day}`;
+function notify(message, error = false) {
+  const element = $("#status-message");
+  element.textContent = message;
+  element.classList.toggle("error", error);
 }
 
-function isValidDate(value) {
-  if (value === "") {
-    return true;
-  }
+function clone(value) {
+  return JSON.parse(JSON.stringify(value));
+}
 
-  if (typeof value !== "string") {
-    return false;
-  }
+function hasKey(object, key) {
+  return typeof key === "string" && Object.hasOwn(object, key);
+}
 
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+function today() {
+  return localDate(new Date());
+}
+
+function localDate(date) {
+  return [
+    String(date.getFullYear()).padStart(4, "0"),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0")
+  ].join("-");
+}
+
+function validDate(value) {
+  if (value === "") return true;
+
+  if (
+    typeof value !== "string" ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(value)
+  ) {
     return false;
   }
 
   const [year, month, day] = value.split("-").map(Number);
 
-  if (year < 1 || year > 9999) {
-    return false;
-  }
+  if (year < 1 || year > 9999) return false;
 
   const date = new Date(0);
-  date.setUTCFullYear(year, month - 1, day);
-  date.setUTCHours(0, 0, 0, 0);
+  date.setFullYear(year, month - 1, day);
+  date.setHours(12, 0, 0, 0);
 
   return (
-    date.getUTCFullYear() === year &&
-    date.getUTCMonth() === month - 1 &&
-    date.getUTCDate() === day
+    date.getFullYear() === year &&
+    date.getMonth() === month - 1 &&
+    date.getDate() === day
   );
+}
+
+function parseDate(value) {
+  const [year, month, day] = value.split("-").map(Number);
+  const date = new Date(0);
+  date.setFullYear(year, month - 1, day);
+  date.setHours(12, 0, 0, 0);
+  return date;
+}
+
+function addDays(value, days) {
+  const date = parseDate(value);
+  date.setDate(date.getDate() + days);
+
+  const result = localDate(date);
+
+  if (!validDate(result)) {
+    throw new Error("Дата выходит за допустимый диапазон.");
+  }
+
+  return result;
+}
+
+function nextRepeatDate(value, repeat) {
+  if (repeat === "daily") return addDays(value, 1);
+  if (repeat === "weekly") return addDays(value, 7);
+
+  const date = parseDate(value);
+  const originalDay = date.getDate();
+
+  date.setDate(1);
+  date.setMonth(date.getMonth() + 1);
+
+  const lastDay = new Date(date.getTime());
+  lastDay.setMonth(lastDay.getMonth() + 1);
+  lastDay.setDate(0);
+
+  date.setDate(Math.min(originalDay, lastDay.getDate()));
+
+  const result = localDate(date);
+
+  if (!validDate(result)) {
+    throw new Error("Следующий срок выходит за допустимый диапазон.");
+  }
+
+  return result;
 }
 
 function formatDate(value) {
-  const [year, month, day] = value.split("-");
-  return `${day}.${month}.${year}`;
+  return value.split("-").reverse().join(".");
 }
 
-function isOverdue(task, today = getToday()) {
+function overdue(task, currentDay = today()) {
   return (
     !task.completed &&
+    !task.archived &&
     Boolean(task.dueDate) &&
-    task.dueDate < today
+    task.dueDate < currentDay
   );
 }
 
-function isValidPriority(value) {
-  return Object.hasOwn(priorityLabels, value);
-}
+// ---------- Проверка и совместимость сохранений ----------
 
-function cloneTasks(value) {
-  return value.map(task => ({ ...task }));
-}
+function normalizeTask(raw, index, strict = false) {
+  if (
+    !raw ||
+    typeof raw.text !== "string" ||
+    !raw.text.trim() ||
+    raw.text.length > 200 ||
+    typeof raw.completed !== "boolean"
+  ) {
+    throw new Error(`Некорректная задача №${index + 1}.`);
+  }
 
-// ---------- Хранение ----------
+  const dueDate = raw.dueDate ?? "";
+  const priority = raw.priority ?? "normal";
+  const category = raw.category ?? "personal";
+  const repeat = raw.repeat ?? "none";
+  const notes = raw.notes ?? "";
+  const subtasks = raw.subtasks ?? [];
+
+  if (
+    !validDate(dueDate) ||
+    !hasKey(priorities, priority) ||
+    !hasKey(categories, category) ||
+    !hasKey(repeats, repeat) ||
+    typeof notes !== "string" ||
+    notes.length > 3000 ||
+    !Array.isArray(subtasks) ||
+    subtasks.length > 30
+  ) {
+    throw new Error(`Неверные поля задачи №${index + 1}.`);
+  }
+
+  if (repeat !== "none" && !dueDate) {
+    throw new Error(`Для повторения задачи №${index + 1} нужен срок.`);
+  }
+
+  const cleanSubtasks = subtasks.map(subtask => {
+    if (
+      !subtask ||
+      typeof subtask.text !== "string" ||
+      !subtask.text.trim() ||
+      subtask.text.length > 200 ||
+      typeof subtask.completed !== "boolean"
+    ) {
+      throw new Error(`Некорректная подзадача у задачи №${index + 1}.`);
+    }
+
+    return {
+      text: subtask.text.trim(),
+      completed: subtask.completed
+    };
+  });
+
+  return {
+    id:
+      !strict && typeof raw.id === "string" && raw.id
+        ? raw.id
+        : crypto.randomUUID(),
+    text: raw.text.trim(),
+    completed: raw.completed,
+    dueDate,
+    priority,
+    category,
+    repeat,
+    notes,
+    subtasks: cleanSubtasks,
+    pinned: raw.pinned === true,
+    archived: raw.archived === true,
+    repeatCreated: raw.repeatCreated === true,
+    createdAt:
+      Number.isFinite(raw.createdAt) && raw.createdAt >= 0
+        ? raw.createdAt
+        : index
+  };
+}
 
 function loadTasks() {
   try {
-    const raw = localStorage.getItem(storageKey);
+    const raw = localStorage.getItem(STORAGE_KEY);
 
-    if (raw === null) {
-      return [];
-    }
+    if (raw === null) return [];
 
     const saved = JSON.parse(raw);
 
-    if (!Array.isArray(saved)) {
-      throw new Error("Неверный формат сохранения");
+    if (!Array.isArray(saved) || saved.length > MAX_TASKS) {
+      throw new Error("Некорректный список.");
     }
 
-    const usedIds = new Set();
+    const ids = new Set();
 
-    return saved
-      .filter(task =>
-        task &&
-        typeof task.id === "string" &&
-        typeof task.text === "string" &&
-        typeof task.completed === "boolean"
-      )
-      .map((task, index) => {
-        let id = task.id;
+    return saved.map((task, index) => {
+      const normalized = normalizeTask(task, index);
 
-        if (!id || usedIds.has(id)) {
-          id = crypto.randomUUID();
-        }
+      if (ids.has(normalized.id)) {
+        normalized.id = crypto.randomUUID();
+      }
 
-        usedIds.add(id);
-
-        return {
-          id,
-          text: task.text,
-          completed: task.completed,
-          dueDate: isValidDate(task.dueDate) ? task.dueDate : "",
-          priority: isValidPriority(task.priority)
-            ? task.priority
-            : "normal",
-          createdAt:
-            Number.isFinite(task.createdAt) && task.createdAt >= 0
-              ? task.createdAt
-              : index
-        };
-      });
+      ids.add(normalized.id);
+      return normalized;
+    });
   } catch {
+    storageBlocked = true;
+
     notify(
-      "Не удалось прочитать сохранение. " +
-      "Если раньше были задачи, не добавляй новые до проверки данных.",
+      "Не удалось прочитать сохранение. Изменения заблокированы, " +
+      "чтобы не перезаписать старые данные. Скачай JSON и проверь его.",
       true
     );
 
@@ -175,53 +284,70 @@ function loadTasks() {
   }
 }
 
-function saveTasks() {
+function persist(nextTasks) {
+  if (storageBlocked) {
+    notify(
+      "Сохранение заблокировано из-за ошибки чтения старых данных.",
+      true
+    );
+    return false;
+  }
+
   try {
-    localStorage.setItem(storageKey, JSON.stringify(tasks));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(nextTasks));
     return true;
   } catch {
     notify(
-      "Браузер не сохранил изменения. " +
-      "Скачай задачи в файл, чтобы не потерять их.",
+      "Браузер не смог сохранить изменения. Действие не применено. " +
+      "Проверь свободное место и настройки хранилища.",
       true
     );
-
     return false;
   }
 }
 
-function notify(message, error = false) {
-  statusMessage.textContent = message;
-  statusMessage.classList.toggle("error", error);
-}
+function commit(nextTasks, message) {
+  if (nextTasks.length > MAX_TASKS) {
+    notify(`Максимум — ${MAX_TASKS} задач.`, true);
+    return false;
+  }
 
-function commitChange(nextTasks, message) {
-  undoSnapshot = cloneTasks(tasks);
+  if (!persist(nextTasks)) return false;
+
+  undoStack.push(clone(tasks));
+
+  if (undoStack.length > HISTORY_LIMIT) {
+    undoStack.shift();
+  }
+
+  redoStack = [];
   tasks = nextTasks;
 
-  const saved = saveTasks();
   render();
+  notify(message);
 
-  if (saved) {
-    notify(message);
-  }
+  return true;
+}
+
+function updateTask(id, change, message) {
+  return commit(
+    tasks.map(task => task.id === id ? change(clone(task)) : task),
+    message
+  );
 }
 
 // ---------- Тема ----------
 
 function initializeTheme() {
-  let theme = window.matchMedia("(prefers-color-scheme: dark)").matches
+  let theme = matchMedia("(prefers-color-scheme: dark)").matches
     ? "dark"
     : "light";
 
   try {
-    const savedTheme = localStorage.getItem(themeKey);
-
-    if (savedTheme === "dark" || savedTheme === "light") {
-      theme = savedTheme;
-    }
+    const saved = localStorage.getItem(THEME_KEY);
+    if (saved === "dark" || saved === "light") theme = saved;
   } catch {
-    // Приложение работает и без сохранения темы.
+    // Тема работает без сохранения.
   }
 
   applyTheme(theme);
@@ -229,16 +355,11 @@ function initializeTheme() {
 
 function applyTheme(theme) {
   document.documentElement.dataset.theme = theme;
-
-  const nextThemeName = theme === "dark"
-    ? "Светлая тема"
-    : "Тёмная тема";
-
-  themeButton.textContent = nextThemeName;
-  themeButton.setAttribute("aria-label", `Включить: ${nextThemeName}`);
+  $("#theme-toggle").textContent =
+    theme === "dark" ? "Светлая тема" : "Тёмная тема";
 }
 
-themeButton.addEventListener("click", () => {
+$("#theme-toggle").addEventListener("click", () => {
   const theme = document.documentElement.dataset.theme === "dark"
     ? "light"
     : "dark";
@@ -246,139 +367,389 @@ themeButton.addEventListener("click", () => {
   applyTheme(theme);
 
   try {
-    localStorage.setItem(themeKey, theme);
+    localStorage.setItem(THEME_KEY, theme);
   } catch {
-    notify("Тема изменена, но браузер не смог запомнить выбор.", true);
+    notify("Не удалось сохранить выбор темы.", true);
   }
 });
 
-// ---------- Поиск, фильтры и сортировка ----------
+// ---------- Черновик и поля форм ----------
 
-function getVisibleTasks() {
+function parseSubtasks(text, previous = []) {
+  const lines = text
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(Boolean);
+
+  if (lines.length > 30 || lines.some(line => line.length > 200)) {
+    throw new Error("Максимум 30 подзадач, каждая до 200 символов.");
+  }
+
+  const remaining = previous.map(item => ({ ...item }));
+
+  return lines.map(text => {
+    const index = remaining.findIndex(item => item.text === text);
+    const old = index >= 0 ? remaining.splice(index, 1)[0] : null;
+
+    return {
+      text,
+      completed: old ? old.completed : false
+    };
+  });
+}
+
+function readFields(prefix, previousSubtasks = []) {
+  const text = $(`#${prefix}-text`)?.value.trim() ??
+    $("#task-input").value.trim();
+
+  const dueDate = $(`#${prefix}-date`).value;
+  const repeat = $(`#${prefix}-repeat`).value;
+
+  if (!text || text.length > 200) {
+    throw new Error("Название должно содержать от 1 до 200 символов.");
+  }
+
+  if (!validDate(dueDate)) {
+    throw new Error("Проверь срок выполнения.");
+  }
+
+  if (repeat !== "none" && !dueDate) {
+    throw new Error("Для повторяющейся задачи укажи срок.");
+  }
+
+  return {
+    text,
+    dueDate,
+    repeat,
+    priority: $(`#${prefix}-priority`).value,
+    category: $(`#${prefix}-category`).value,
+    notes: $(`#${prefix}-notes`).value.trim(),
+    subtasks: parseSubtasks(
+      $(`#${prefix}-subtasks`).value,
+      previousSubtasks
+    )
+  };
+}
+
+const draftFields = [
+  "task-input",
+  "task-date",
+  "task-priority",
+  "task-category",
+  "task-repeat",
+  "task-notes",
+  "task-subtasks"
+];
+
+function saveDraft() {
+  try {
+    const draft = {};
+
+    draftFields.forEach(id => {
+      draft[id] = document.getElementById(id).value;
+    });
+
+    localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+    $("#draft-status").textContent = "Черновик сохранён";
+  } catch {
+    $("#draft-status").textContent = "Черновик не сохранён";
+  }
+}
+
+function restoreDraft() {
+  try {
+    const draft = JSON.parse(localStorage.getItem(DRAFT_KEY));
+
+    if (!draft || typeof draft !== "object") return;
+
+    draftFields.forEach(id => {
+      if (typeof draft[id] === "string") {
+        document.getElementById(id).value = draft[id];
+      }
+    });
+
+    $("#draft-status").textContent = "Черновик восстановлен";
+  } catch {
+    // Ошибка черновика не влияет на сохранённые задачи.
+  }
+}
+
+form.addEventListener("input", saveDraft);
+form.addEventListener("change", saveDraft);
+
+form.addEventListener("submit", event => {
+  event.preventDefault();
+
+  try {
+    const fields = readFields("task");
+
+    const task = {
+      ...fields,
+      id: crypto.randomUUID(),
+      createdAt: Date.now(),
+      completed: false,
+      pinned: false,
+      archived: false,
+      repeatCreated: false
+    };
+
+    if (!commit([...tasks, task], "Задача добавлена.")) return;
+
+    currentFilter = "all";
+    categoryFilter.value = "all";
+    searchInput.value = "";
+    focusMode = false;
+    selected.clear();
+
+    form.reset();
+
+    try {
+      localStorage.removeItem(DRAFT_KEY);
+    } catch {
+      // Основная задача уже сохранена.
+    }
+
+    $("#draft-status").textContent = "";
+    render();
+    $("#task-input").focus();
+  } catch (error) {
+    notify(error.message, true);
+  }
+});
+
+// ---------- Фильтры и сортировка ----------
+
+function visibleTasks() {
   const query = searchInput.value.trim().toLocaleLowerCase("ru");
-  const today = getToday();
+  const currentDay = today();
+  const weekEnd = addDays(currentDay, 6);
 
-  const visible = tasks.filter(task => {
-    const matchesSearch = task.text
-      .toLocaleLowerCase("ru")
-      .includes(query);
-
-    if (!matchesSearch) {
+  let result = tasks.filter(task => {
+    if (currentFilter === "archived") {
+      if (!task.archived) return false;
+    } else if (task.archived) {
       return false;
     }
 
-    if (currentFilter === "active") {
-      return !task.completed;
+    if (
+      categoryFilter.value !== "all" &&
+      task.category !== categoryFilter.value
+    ) {
+      return false;
     }
 
-    if (currentFilter === "completed") {
-      return task.completed;
-    }
+    const searchText = [
+      task.text,
+      task.notes,
+      ...task.subtasks.map(item => item.text)
+    ].join(" ").toLocaleLowerCase("ru");
 
-    if (currentFilter === "overdue") {
-      return isOverdue(task, today);
-    }
+    if (!searchText.includes(query)) return false;
 
-    return true;
+    switch (currentFilter) {
+      case "active":
+        return !task.completed;
+      case "completed":
+        return task.completed;
+      case "overdue":
+        return overdue(task, currentDay);
+      case "today":
+        return !task.completed && task.dueDate === currentDay;
+      case "week":
+        return (
+          !task.completed &&
+          Boolean(task.dueDate) &&
+          task.dueDate >= currentDay &&
+          task.dueDate <= weekEnd
+        );
+      default:
+        return true;
+    }
   });
 
-  visible.sort((a, b) => {
+  result.sort((a, b) => {
+    if (a.pinned !== b.pinned) {
+      return Number(b.pinned) - Number(a.pinned);
+    }
+
     switch (sortSelect.value) {
       case "oldest":
         return a.createdAt - b.createdAt;
-
-      case "deadline": {
-        const firstDate = a.dueDate || "9999-99-99";
-        const secondDate = b.dueDate || "9999-99-99";
-
+      case "deadline":
         return (
-          firstDate.localeCompare(secondDate) ||
+          (a.dueDate || "9999-99-99").localeCompare(
+            b.dueDate || "9999-99-99"
+          ) ||
           b.createdAt - a.createdAt
         );
-      }
-
       case "priority":
         return (
-          priorityWeights[b.priority] - priorityWeights[a.priority] ||
+          priorityWeight[b.priority] - priorityWeight[a.priority] ||
           b.createdAt - a.createdAt
         );
-
       case "alphabet":
         return a.text.localeCompare(b.text, "ru");
-
       default:
         return b.createdAt - a.createdAt;
     }
   });
 
-  return visible;
+  if (focusMode) {
+    result = result.filter(task => !task.completed && !task.archived).slice(0, 1);
+  }
+
+  return result;
 }
 
-searchInput.addEventListener("input", render);
-sortSelect.addEventListener("change", render);
+function changeView() {
+  selected.clear();
+  render();
+}
+
+searchInput.addEventListener("input", changeView);
+categoryFilter.addEventListener("change", changeView);
+sortSelect.addEventListener("change", changeView);
 
 filterButtons.forEach(button => {
   button.addEventListener("click", () => {
     currentFilter = button.dataset.filter;
-    render();
+    changeView();
   });
 });
 
-// ---------- Построение списка ----------
+$("#focus-toggle").addEventListener("click", () => {
+  focusMode = !focusMode;
 
-function makeBadge(text, extraClass = "") {
-  const badge = document.createElement("span");
-  badge.className = `badge ${extraClass}`.trim();
-  badge.textContent = text;
+  if (focusMode) {
+    currentFilter = "active";
+  }
 
-  return badge;
+  changeView();
+});
+
+// ---------- Выполнение и повторяющиеся задачи ----------
+
+function changeCompletion(ids, completed) {
+  const next = clone(tasks);
+  const generated = [];
+
+  next.forEach(task => {
+    if (!ids.has(task.id)) return;
+
+    const firstCompletion = completed && !task.completed;
+    task.completed = completed;
+
+    if (
+      firstCompletion &&
+      task.repeat !== "none" &&
+      task.dueDate &&
+      !task.repeatCreated &&
+      !task.archived
+    ) {
+      const nextTask = {
+        ...clone(task),
+        id: crypto.randomUUID(),
+        createdAt: Date.now(),
+        dueDate: nextRepeatDate(task.dueDate, task.repeat),
+        completed: false,
+        archived: false,
+        repeatCreated: false,
+        subtasks: task.subtasks.map(item => ({
+          text: item.text,
+          completed: false
+        }))
+      };
+
+      generated.push(nextTask);
+      task.repeatCreated = true;
+    }
+  });
+
+  return [...next, ...generated];
 }
 
-function makeButton(text, className, accessibleLabel, handler) {
+function completeIds(ids, completed) {
+  try {
+    commit(
+      changeCompletion(ids, completed),
+      completed
+        ? "Задачи выполнены. Следующие повторения созданы при необходимости."
+        : "Задачи возвращены в активные."
+    );
+  } catch (error) {
+    notify(error.message, true);
+    render();
+  }
+}
+
+// ---------- Построение интерфейса ----------
+
+function badge(text, className = "") {
+  const element = document.createElement("span");
+  element.className = `badge ${className}`.trim();
+  element.textContent = text;
+  return element;
+}
+
+function action(text, label, handler, className = "secondary") {
   const button = document.createElement("button");
   button.type = "button";
   button.className = `button ${className}`;
   button.textContent = text;
-  button.setAttribute("aria-label", accessibleLabel);
+  button.setAttribute("aria-label", label);
   button.addEventListener("click", handler);
-
   return button;
 }
 
-function focusTaskCheckbox(id) {
-  const checkbox = document.getElementById(`task-${id}`);
+function focusCheckbox(id) {
+  const element = document.getElementById(`complete-${id}`);
 
-  if (checkbox) {
-    checkbox.focus();
+  if (element) {
+    element.focus();
   } else {
-    searchInput.focus();
+    $("#focus-toggle").focus();
   }
 }
 
-function createTaskElement(task, today) {
+function createTaskElement(task, currentDay) {
   const item = document.createElement("li");
-  item.className = task.completed ? "task completed" : "task";
+  item.className = [
+    "task",
+    task.completed ? "completed" : "",
+    selected.has(task.id) ? "selected" : ""
+  ].filter(Boolean).join(" ");
+
+  const checks = document.createElement("div");
+  checks.className = "task-checks";
+
+  const select = document.createElement("input");
+  select.type = "checkbox";
+  select.className = "task-select";
+  select.checked = selected.has(task.id);
+  select.setAttribute("aria-label", `Выбрать задачу: ${task.text}`);
+
+  select.addEventListener("change", () => {
+    if (select.checked) {
+      selected.add(task.id);
+    } else {
+      selected.delete(task.id);
+    }
+
+    item.classList.toggle("selected", select.checked);
+    renderSelection(visibleTasks());
+  });
 
   const checkbox = document.createElement("input");
   checkbox.type = "checkbox";
-  checkbox.className = "task-checkbox";
-  checkbox.id = `task-${task.id}`;
+  checkbox.id = `complete-${task.id}`;
   checkbox.checked = task.completed;
 
   checkbox.addEventListener("change", () => {
-    const nextTasks = tasks.map(current =>
-      current.id === task.id
-        ? { ...current, completed: checkbox.checked }
-        : current
-    );
-
-    commitChange(
-      nextTasks,
-      checkbox.checked ? "Задача выполнена." : "Задача снова активна."
-    );
-
-    focusTaskCheckbox(task.id);
+    completeIds(new Set([task.id]), checkbox.checked);
+    focusCheckbox(task.id);
   });
+
+  checks.append(select, checkbox);
 
   const content = document.createElement("div");
   content.className = "task-content";
@@ -391,85 +762,221 @@ function createTaskElement(task, today) {
   const meta = document.createElement("div");
   meta.className = "task-meta";
 
+  if (task.pinned) meta.append(badge("Закреплено", "pinned"));
+
   meta.append(
-    makeBadge(
-      priorityLabels[task.priority],
-      `priority-${task.priority}`
-    )
+    badge(categories[task.category]),
+    badge(priorities[task.priority], `priority-${task.priority}`)
   );
 
   if (task.dueDate) {
-    const overdue = isOverdue(task, today);
-
+    const late = overdue(task, currentDay);
     meta.append(
-      makeBadge(
-        `${overdue ? "Просрочено" : "Срок"}: ${formatDate(task.dueDate)}`,
-        overdue ? "overdue" : ""
+      badge(
+        `${late ? "Просрочено" : "Срок"}: ${formatDate(task.dueDate)}`,
+        late ? "overdue" : ""
       )
     );
   }
 
-  if (task.completed) {
-    meta.append(makeBadge("Выполнено", "done-badge"));
+  if (task.repeat !== "none") {
+    meta.append(badge(repeats[task.repeat]));
   }
 
+  if (task.completed) meta.append(badge("Выполнено", "done"));
+  if (task.archived) meta.append(badge("В архиве"));
+
   content.append(title, meta);
+
+  if (task.notes) {
+    const notes = document.createElement("p");
+    notes.className = "task-notes";
+    notes.textContent = task.notes;
+    content.append(notes);
+  }
+
+  if (task.subtasks.length) {
+    const checklist = document.createElement("ul");
+    checklist.className = "subtasks";
+
+    task.subtasks.forEach((subtask, index) => {
+      const row = document.createElement("li");
+      const label = document.createElement("label");
+      label.className = "subtask-label";
+
+      const check = document.createElement("input");
+      check.type = "checkbox";
+      check.checked = subtask.completed;
+      check.id = `sub-${task.id}-${index}`;
+
+      const text = document.createElement("span");
+      text.textContent = subtask.text;
+      text.classList.toggle("subtask-done", subtask.completed);
+
+      check.addEventListener("change", () => {
+        const id = check.id;
+
+        updateTask(
+          task.id,
+          current => {
+            current.subtasks[index].completed = check.checked;
+            return current;
+          },
+          "Подзадача обновлена."
+        );
+
+        document.getElementById(id)?.focus();
+      });
+
+      label.append(check, text);
+      row.append(label);
+      checklist.append(row);
+    });
+
+    content.append(checklist);
+  }
 
   const actions = document.createElement("div");
   actions.className = "task-actions";
 
-  const editButton = makeButton(
-    "Изменить",
-    "button-secondary",
-    `Редактировать задачу: ${task.text}`,
-    () => openEditor(task.id)
+  actions.append(
+    action(
+      "Изменить",
+      `Редактировать: ${task.text}`,
+      () => openEditor(task.id)
+    ),
+    action(
+      task.pinned ? "Открепить" : "Закрепить",
+      `${task.pinned ? "Открепить" : "Закрепить"}: ${task.text}`,
+      () => updateTask(
+        task.id,
+        current => ({ ...current, pinned: !current.pinned }),
+        "Закрепление изменено."
+      )
+    ),
+    action(
+      "Копия",
+      `Создать копию: ${task.text}`,
+      () => {
+        const copy = {
+          ...clone(task),
+          id: crypto.randomUUID(),
+          createdAt: Date.now(),
+          completed: false,
+          archived: false,
+          repeatCreated: false,
+          subtasks: task.subtasks.map(subtask => ({
+            text: subtask.text,
+            completed: false
+          }))
+        };
+
+        commit([...tasks, copy], "Создана активная копия задачи.");
+      }
+    )
   );
 
-  const deleteButton = makeButton(
-    "Удалить",
-    "button-danger",
-    `Удалить задачу: ${task.text}`,
-    () => {
-      commitChange(
-        tasks.filter(current => current.id !== task.id),
-        "Задача удалена. Можно отменить последнее изменение."
-      );
+  if (!task.completed && !task.archived) {
+    actions.append(
+      action(
+        "+1 день",
+        `Перенести срок на день: ${task.text}`,
+        () => {
+          try {
+            const base = task.dueDate && task.dueDate > today()
+              ? task.dueDate
+              : today();
 
-      undoButton.focus();
-    }
+            updateTask(
+              task.id,
+              current => ({ ...current, dueDate: addDays(base, 1) }),
+              "Срок перенесён."
+            );
+          } catch (error) {
+            notify(error.message, true);
+          }
+        }
+      )
+    );
+  }
+
+  actions.append(
+    action(
+      task.archived ? "Вернуть" : "В архив",
+      `${task.archived ? "Вернуть из архива" : "Архивировать"}: ${task.text}`,
+      () => updateTask(
+        task.id,
+        current => ({ ...current, archived: !current.archived }),
+        "Архив обновлён."
+      )
+    ),
+    action(
+      "Удалить",
+      `Удалить: ${task.text}`,
+      () => {
+        if (commit(
+          tasks.filter(current => current.id !== task.id),
+          "Задача удалена. Удаление можно отменить."
+        )) {
+          $("#undo-button").focus();
+        }
+      },
+      "danger"
+    )
   );
 
-  actions.append(editButton, deleteButton);
-  item.append(checkbox, content, actions);
-
+  item.append(checks, content, actions);
   return item;
 }
 
+function renderSelection(visible) {
+  const visibleIds = new Set(visible.map(task => task.id));
+  selected = new Set([...selected].filter(id => visibleIds.has(id)));
+
+  const selectAll = $("#select-visible");
+  const count = selected.size;
+
+  selectAll.disabled = visible.length === 0;
+  selectAll.checked = visible.length > 0 && count === visible.length;
+  selectAll.indeterminate = count > 0 && count < visible.length;
+
+  $("#selected-count").textContent = `Выбрано: ${count}`;
+  $("#bulk-actions").hidden = count === 0;
+
+  $("#bulk-archive").textContent =
+    currentFilter === "archived" ? "Вернуть из архива" : "В архив";
+}
+
 function render() {
-  const visible = getVisibleTasks();
-  const today = getToday();
+  const currentDay = today();
+  const visible = visibleTasks();
+  const outsideArchive = tasks.filter(task => !task.archived);
+  const done = outsideArchive.filter(task => task.completed).length;
+  const active = outsideArchive.length - done;
+  const late = outsideArchive.filter(task => overdue(task, currentDay)).length;
+  const percent = outsideArchive.length
+    ? Math.round(done / outsideArchive.length * 100)
+    : 0;
 
-  const completed = tasks.filter(task => task.completed).length;
-  const active = tasks.length - completed;
-  const overdue = tasks.filter(task => isOverdue(task, today)).length;
-
-  const percent = tasks.length === 0
-    ? 0
-    : Math.round((completed / tasks.length) * 100);
-
-  $("#total-count").textContent = tasks.length;
+  $("#total-count").textContent = outsideArchive.length;
   $("#active-count").textContent = active;
-  $("#completed-count").textContent = completed;
-  $("#overdue-count").textContent = overdue;
-  $("#results-count").textContent = `Показано: ${visible.length}`;
+  $("#completed-count").textContent = done;
+  $("#overdue-count").textContent = late;
+
+  $("#results-count").textContent =
+    `Показано: ${visible.length}${focusMode ? " · режим фокуса" : ""}`;
 
   $("#progress-text").textContent = `${percent}%`;
   $("#progress-bar").value = percent;
   $("#progress-bar").textContent = `${percent}%`;
-  $("#progress-bar").setAttribute("aria-label", `Выполнено ${percent}% задач`);
+  $("#progress-bar").setAttribute(
+    "aria-label",
+    `Выполнено ${percent}% задач вне архива`
+  );
 
   $("#task-counter").textContent =
-    `Осталось задач: ${active}. Выполнено: ${completed} из ${tasks.length}.`;
+    `Осталось: ${active}. Выполнено: ${done}. ` +
+    `В архиве: ${tasks.length - outsideArchive.length}.`;
 
   filterButtons.forEach(button => {
     button.setAttribute(
@@ -478,351 +985,358 @@ function render() {
     );
   });
 
+  $("#focus-toggle").setAttribute("aria-pressed", String(focusMode));
+  $("#focus-toggle").textContent =
+    focusMode ? "Выйти из фокуса" : "Режим фокуса";
+
+  renderSelection(visible);
+
   const fragment = document.createDocumentFragment();
 
   visible.forEach(task => {
-    fragment.append(createTaskElement(task, today));
+    fragment.append(createTaskElement(task, currentDay));
   });
 
   list.replaceChildren(fragment);
 
-  emptyState.hidden = visible.length > 0;
+  $("#empty-state").hidden = visible.length > 0;
+  $("#empty-title").textContent =
+    tasks.length === 0 ? "Здесь начнётся твой план" : "Нет подходящих задач";
 
-  if (tasks.length === 0) {
-    emptyTitle.textContent = "Здесь начнётся твой план";
-    emptyDescription.textContent = "Добавь первую задачу в форме выше.";
-  } else if (searchInput.value.trim()) {
-    emptyTitle.textContent = "Ничего не найдено";
-    emptyDescription.textContent =
-      "Попробуй другой запрос или переключи фильтр.";
-  } else {
-    const messages = {
-      all: "Здесь пока нет задач",
-      active: "Всё сделано!",
-      completed: "Пока нет выполненных задач",
-      overdue: "Просроченных задач нет"
-    };
+  $("#empty-description").textContent = tasks.length === 0
+    ? "Добавь первую задачу в форме выше."
+    : "Измени поиск, категорию, фильтр или отключи режим фокуса.";
 
-    emptyTitle.textContent = messages[currentFilter];
-    emptyDescription.textContent =
-      "Можно выбрать другой фильтр или добавить новую задачу.";
-  }
+  const allDone = visible.length > 0 &&
+    visible.every(task => task.completed);
 
-  clearButton.disabled = completed === 0;
-  clearButton.textContent = `Удалить выполненные (${completed})`;
+  $("#toggle-visible").disabled = visible.length === 0 || storageBlocked;
+  $("#toggle-visible").textContent =
+    allDone ? "Вернуть показанные в активные" : "Выполнить показанные";
 
-  toggleVisibleButton.disabled = visible.length === 0;
+  $("#clear-completed").disabled = done === 0 || storageBlocked;
+  $("#clear-completed").textContent =
+    `Удалить выполненные (${done})`;
 
-  const allVisibleCompleted =
-    visible.length > 0 && visible.every(task => task.completed);
+  $("#undo-button").disabled = undoStack.length === 0;
+  $("#redo-button").disabled = redoStack.length === 0;
 
-  toggleVisibleButton.textContent = allVisibleCompleted
-    ? "Вернуть показанные в активные"
-    : "Выполнить показанные";
-
-  undoButton.disabled = undoSnapshot === null;
+  $("#task-form button[type='submit']").disabled = storageBlocked;
 }
-
-// ---------- Добавление ----------
-
-form.addEventListener("submit", event => {
-  event.preventDefault();
-
-  const text = input.value.trim();
-
-  if (!text) {
-    notify("Введи текст задачи, а не только пробелы.", true);
-    input.focus();
-    return;
-  }
-
-  if (tasks.length >= maxTasks) {
-    notify(`Достигнут лимит: ${maxTasks} задач. Удали ненужные.`, true);
-    return;
-  }
-
-  if (!isValidDate(dateInput.value)) {
-    notify("Проверь срок выполнения задачи.", true);
-    dateInput.focus();
-    return;
-  }
-
-  const task = {
-    id: crypto.randomUUID(),
-    text,
-    completed: false,
-    dueDate: dateInput.value,
-    priority: priorityInput.value,
-    createdAt: Date.now()
-  };
-
-  // Новая задача не должна исчезать из-за поиска или фильтра.
-  currentFilter = "all";
-  searchInput.value = "";
-
-  commitChange([...tasks, task], "Задача добавлена.");
-
-  form.reset();
-  input.focus();
-});
 
 // ---------- Редактирование ----------
 
 function openEditor(id) {
-  const task = tasks.find(current => current.id === id);
-
-  if (!task) {
-    return;
-  }
+  const task = tasks.find(item => item.id === id);
+  if (!task) return;
 
   editingId = id;
-  editText.value = task.text;
-  editDate.value = task.dueDate;
-  editPriority.value = task.priority;
+
+  $("#edit-text").value = task.text;
+  $("#edit-date").value = task.dueDate;
+  $("#edit-priority").value = task.priority;
+  $("#edit-category").value = task.category;
+  $("#edit-repeat").value = task.repeat;
+  $("#edit-notes").value = task.notes;
+  $("#edit-subtasks").value =
+    task.subtasks.map(item => item.text).join("\n");
 
   editDialog.showModal();
-  editText.focus();
+  $("#edit-text").focus();
 }
 
 $("#close-edit").addEventListener("click", () => editDialog.close());
 $("#cancel-edit").addEventListener("click", () => editDialog.close());
 
 editDialog.addEventListener("close", () => {
-  const previousId = editingId;
+  const id = editingId;
   editingId = null;
-
-  if (previousId) {
-    focusTaskCheckbox(previousId);
-  }
+  if (id) focusCheckbox(id);
 });
 
-editForm.addEventListener("submit", event => {
+$("#edit-form").addEventListener("submit", event => {
   event.preventDefault();
 
-  const text = editText.value.trim();
+  const existing = tasks.find(task => task.id === editingId);
+  if (!existing) return;
 
-  if (!text) {
-    editText.setCustomValidity("Введи текст задачи.");
-    editText.reportValidity();
-    return;
+  try {
+    const fields = readFields("edit", existing.subtasks);
+
+    const success = updateTask(
+      existing.id,
+      task => ({ ...task, ...fields }),
+      "Задача обновлена."
+    );
+
+    if (success) editDialog.close();
+  } catch (error) {
+    notify(error.message, true);
+    alert(error.message);
   }
-
-  if (!isValidDate(editDate.value)) {
-    editDate.setCustomValidity("Проверь дату.");
-    editDate.reportValidity();
-    return;
-  }
-
-  const nextTasks = tasks.map(task =>
-    task.id === editingId
-      ? {
-          ...task,
-          text,
-          dueDate: editDate.value,
-          priority: editPriority.value
-        }
-      : task
-  );
-
-  commitChange(nextTasks, "Изменения задачи сохранены.");
-  editDialog.close();
 });
 
-editText.addEventListener("input", () => editText.setCustomValidity(""));
-editDate.addEventListener("input", () => editDate.setCustomValidity(""));
+// ---------- Выделение и массовые действия ----------
 
-// ---------- Массовые действия и отмена ----------
+$("#select-visible").addEventListener("change", event => {
+  selected = event.target.checked
+    ? new Set(visibleTasks().map(task => task.id))
+    : new Set();
 
-toggleVisibleButton.addEventListener("click", () => {
-  const visible = getVisibleTasks();
-
-  if (visible.length === 0) {
-    return;
-  }
-
-  const ids = new Set(visible.map(task => task.id));
-  const nextCompleted = !visible.every(task => task.completed);
-
-  const nextTasks = tasks.map(task =>
-    ids.has(task.id)
-      ? { ...task, completed: nextCompleted }
-      : task
-  );
-
-  commitChange(nextTasks, `Обновлено задач: ${visible.length}.`);
-});
-
-clearButton.addEventListener("click", () => {
-  const count = tasks.filter(task => task.completed).length;
-
-  if (count === 0) {
-    return;
-  }
-
-  const confirmed = confirm(
-    `Удалить все выполненные задачи (${count})?\n` +
-    "Это касается всего списка, а не только текущего фильтра."
-  );
-
-  if (!confirmed) {
-    return;
-  }
-
-  commitChange(
-    tasks.filter(task => !task.completed),
-    `Удалено выполненных задач: ${count}. Можно отменить.`
-  );
-
-  undoButton.focus();
-});
-
-undoButton.addEventListener("click", () => {
-  if (undoSnapshot === null) {
-    return;
-  }
-
-  tasks = cloneTasks(undoSnapshot);
-  undoSnapshot = null;
-
-  const saved = saveTasks();
   render();
+});
 
-  if (saved) {
-    notify("Последнее изменение отменено.");
+$("#clear-selection").addEventListener("click", () => {
+  selected.clear();
+  render();
+});
+
+$("#bulk-complete").addEventListener("click", () => {
+  completeIds(new Set(selected), true);
+});
+
+$("#bulk-archive").addEventListener("click", () => {
+  const archived = currentFilter !== "archived";
+
+  commit(
+    tasks.map(task =>
+      selected.has(task.id) ? { ...task, archived } : task
+    ),
+    archived ? "Выбранные задачи в архиве." : "Задачи возвращены из архива."
+  );
+});
+
+$("#bulk-delete").addEventListener("click", () => {
+  if (!selected.size) return;
+
+  if (!confirm(`Удалить выбранные задачи (${selected.size})?`)) return;
+
+  commit(
+    tasks.filter(task => !selected.has(task.id)),
+    "Выбранные задачи удалены. Можно отменить."
+  );
+});
+
+$("#toggle-visible").addEventListener("click", () => {
+  const visible = visibleTasks();
+  if (!visible.length) return;
+
+  const completed = !visible.every(task => task.completed);
+  completeIds(new Set(visible.map(task => task.id)), completed);
+});
+
+$("#clear-completed").addEventListener("click", () => {
+  const count = tasks.filter(task => task.completed && !task.archived).length;
+
+  if (!count) return;
+
+  if (!confirm(
+    `Удалить все выполненные задачи вне архива (${count})?\n` +
+    "Поиск и текущий фильтр не ограничивают это действие."
+  )) {
+    return;
   }
 
-  input.focus();
+  commit(
+    tasks.filter(task => !task.completed || task.archived),
+    "Выполненные задачи удалены. Архив не затронут."
+  );
+});
+
+// ---------- История ----------
+
+$("#undo-button").addEventListener("click", () => {
+  if (!undoStack.length) return;
+
+  const previous = undoStack[undoStack.length - 1];
+  if (!persist(previous)) return;
+
+  redoStack.push(clone(tasks));
+  tasks = undoStack.pop();
+  selected.clear();
+
+  render();
+  notify("Изменение отменено.");
+});
+
+$("#redo-button").addEventListener("click", () => {
+  if (!redoStack.length) return;
+
+  const next = redoStack[redoStack.length - 1];
+  if (!persist(next)) return;
+
+  undoStack.push(clone(tasks));
+  tasks = redoStack.pop();
+  selected.clear();
+
+  render();
+  notify("Изменение повторено.");
 });
 
 // ---------- Экспорт ----------
 
-$("#export-button").addEventListener("click", () => {
-  const backup = {
-    version: 1,
-    exportedAt: new Date().toISOString(),
-    tasks: cloneTasks(tasks)
-  };
-
-  const blob = new Blob(
-    [JSON.stringify(backup, null, 2)],
-    { type: "application/json;charset=utf-8" }
-  );
-
+function download(content, type, filename) {
+  const blob = new Blob([content], { type });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
 
   link.href = url;
-  link.download = `my-tasks-${getToday()}.json`;
+  link.download = filename;
 
   document.body.append(link);
   link.click();
   link.remove();
 
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
 
-  notify("Файл подготовлен. Проверь загрузки браузера.");
+$("#export-button").addEventListener("click", () => {
+  if (storageBlocked) {
+    try {
+      const original = localStorage.getItem(STORAGE_KEY);
+
+      if (original === null) {
+        throw new Error("Сохранение недоступно.");
+      }
+
+      download(
+        original,
+        "application/json;charset=utf-8",
+        `tasks-recovery-${today()}.json`
+      );
+
+      notify("Скачан исходный файл для восстановления.");
+    } catch {
+      notify("Не удалось получить исходное сохранение.", true);
+    }
+
+    return;
+  }
+
+  download(
+    JSON.stringify({
+      version: 2,
+      exportedAt: new Date().toISOString(),
+      tasks
+    }, null, 2),
+    "application/json;charset=utf-8",
+    `my-tasks-${today()}.json`
+  );
+
+  notify("JSON подготовлен. Включены все задачи и архив.");
+});
+
+function csvCell(value) {
+  let text = String(value ?? "");
+
+  // Не даём текстовым ячейкам превращаться в формулы таблицы.
+  if (/^[\s]*[=+\-@]/.test(text) || /^[\t\r\n]/.test(text)) {
+    text = "'" + text;
+  }
+
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
+$("#csv-button").addEventListener("click", () => {
+  if (storageBlocked) {
+    notify("Сначала нужно восстановить сохранение. Доступен исходный JSON.", true);
+    return;
+  }
+
+  const rows = [
+    [
+      "Название",
+      "Выполнено",
+      "Срок",
+      "Приоритет",
+      "Категория",
+      "Повторение",
+      "Заметка",
+      "Подзадачи",
+      "Закреплено",
+      "В архиве"
+    ],
+    ...tasks.map(task => [
+      task.text,
+      task.completed ? "Да" : "Нет",
+      task.dueDate,
+      priorities[task.priority],
+      categories[task.category],
+      repeats[task.repeat],
+      task.notes,
+      task.subtasks.map(item =>
+        `${item.completed ? "[x]" : "[ ]"} ${item.text}`
+      ).join("\n"),
+      task.pinned ? "Да" : "Нет",
+      task.archived ? "Да" : "Нет"
+    ])
+  ];
+
+  const csv = "\uFEFF" +
+    rows.map(row => row.map(csvCell).join(";")).join("\r\n");
+
+  download(csv, "text/csv;charset=utf-8", `my-tasks-${today()}.csv`);
+  notify("CSV подготовлен. Включены все задачи и архив.");
 });
 
 // ---------- Импорт ----------
 
-$("#import-button").addEventListener("click", () => {
-  importFile.click();
-});
-
-function validateImportedTasks(data) {
-  const source = Array.isArray(data) ? data : data?.tasks;
-
-  if (!Array.isArray(source)) {
-    throw new Error("В файле не найден список задач.");
-  }
-
-  if (source.length === 0) {
-    throw new Error("В файле нет задач для загрузки.");
-  }
-
-  if (source.length + tasks.length > maxTasks) {
-    throw new Error(`После импорта будет больше ${maxTasks} задач.`);
-  }
-
-  return source.map((task, index) => {
-    if (
-      !task ||
-      typeof task.text !== "string" ||
-      !task.text.trim() ||
-      task.text.trim().length > 200 ||
-      typeof task.completed !== "boolean"
-    ) {
-      throw new Error(`Неверный формат задачи №${index + 1}.`);
-    }
-
-    const dueDate = task.dueDate ?? "";
-    const priority = task.priority ?? "normal";
-
-    if (!isValidDate(dueDate) || !isValidPriority(priority)) {
-      throw new Error(
-        `Некорректная дата или приоритет у задачи №${index + 1}.`
-      );
-    }
-
-    return {
-      id: crypto.randomUUID(),
-      text: task.text.trim(),
-      completed: task.completed,
-      dueDate,
-      priority,
-      createdAt:
-        Number.isFinite(task.createdAt) && task.createdAt >= 0
-          ? task.createdAt
-          : Date.now() + index
-    };
-  });
-}
+$("#import-button").addEventListener("click", () => importFile.click());
 
 importFile.addEventListener("change", async () => {
   const file = importFile.files[0];
-
-  if (!file) {
-    return;
-  }
+  if (!file) return;
 
   try {
-    if (file.size > 2 * 1024 * 1024) {
-      throw new Error("Файл слишком большой. Максимум — 2 МБ.");
+    if (storageBlocked) {
+      throw new Error(
+        "Импорт заблокирован, чтобы не перезаписать непрочитанное сохранение."
+      );
     }
 
-    const text = await file.text();
+    if (file.size > 100 * 1024 * 1024) {
+      throw new Error("Максимальный размер файла — 100 МБ.");
+    }
 
     let data;
 
     try {
-      data = JSON.parse(text);
+      data = JSON.parse(await file.text());
     } catch {
-      throw new Error("Не удалось прочитать JSON. Проверь файл.");
+      throw new Error("Не удалось прочитать JSON-файл.");
     }
 
-    const imported = validateImportedTasks(data);
+    const source = Array.isArray(data) ? data : data?.tasks;
 
-    const confirmed = confirm(
-      `Добавить задач из файла: ${imported.length}?\n` +
-      "Текущие задачи останутся. Повторный импорт создаст копии."
+    if (!Array.isArray(source) || !source.length) {
+      throw new Error("В файле нет задач.");
+    }
+
+    if (source.length + tasks.length > MAX_TASKS) {
+      throw new Error(`После импорта будет больше ${MAX_TASKS} задач.`);
+    }
+
+    const imported = source.map((task, index) =>
+      normalizeTask(task, index, true)
     );
 
-    if (!confirmed) {
+    if (!confirm(
+      `Добавить задач: ${imported.length}?\n` +
+      "Текущие данные останутся. Повторный импорт создаст копии."
+    )) {
       return;
     }
 
-    currentFilter = "all";
-    searchInput.value = "";
-
-    commitChange(
-      [...tasks, ...imported],
-      `Загружено задач: ${imported.length}. Импорт можно отменить.`
-    );
+    if (commit([...tasks, ...imported], "Задачи загружены. Импорт можно отменить.")) {
+      currentFilter = "all";
+      focusMode = false;
+      searchInput.value = "";
+      categoryFilter.value = "all";
+      selected.clear();
+      render();
+    }
   } catch (error) {
-    notify(
-      error instanceof Error ? error.message : "Не удалось загрузить файл.",
-      true
-    );
+    notify(error.message || "Ошибка импорта.", true);
   } finally {
     importFile.value = "";
   }
@@ -831,28 +1345,23 @@ importFile.addEventListener("change", async () => {
 // ---------- Горячие клавиши ----------
 
 document.addEventListener("keydown", event => {
-  if (event.isComposing || editDialog.open) {
-    return;
-  }
+  if (event.isComposing || editDialog.open) return;
 
   const target = event.target;
-  const isTyping =
-    target instanceof HTMLElement &&
-    (
-      target.matches("input, textarea, select") ||
-      target.isContentEditable
-    );
+  const typing = target instanceof HTMLElement && (
+    target.matches("input, textarea, select") ||
+    target.isContentEditable
+  );
 
   if (
     event.key === "/" &&
-    !isTyping &&
+    !typing &&
     !event.ctrlKey &&
     !event.metaKey &&
     !event.altKey
   ) {
     event.preventDefault();
     searchInput.focus();
-    return;
   }
 
   if (
@@ -862,20 +1371,19 @@ document.addEventListener("keydown", event => {
   ) {
     event.preventDefault();
 
-    if (input.value.trim()) {
+    if ($("#task-input").value.trim()) {
       form.requestSubmit();
     } else {
-      input.focus();
+      $("#task-input").focus();
     }
   }
 
   if (event.key === "Escape" && target === searchInput) {
     searchInput.value = "";
-    render();
+    changeView();
   }
 });
 
-// Пересчитываем просрочку при возвращении на вкладку.
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden && !editDialog.open) {
     render();
