@@ -18,18 +18,65 @@
         <input
           id="task-input"
           type="text"
-          placeholder="Например, прочитать 10 страниц"
+          placeholder="Что нужно сделать?"
           maxlength="200"
           required
         >
         <button type="submit">Добавить</button>
       </div>
+
+      <div class="options">
+        <div class="field">
+          <label for="task-date">Срок выполнения</label>
+          <input id="task-date" type="date">
+        </div>
+
+        <div class="field">
+          <label for="task-priority">Приоритет</label>
+          <select id="task-priority">
+            <option value="normal">Обычный</option>
+            <option value="important">Важный</option>
+            <option value="urgent">Срочный</option>
+          </select>
+        </div>
+      </div>
     </form>
 
-    <ul id="task-list"></ul>
+    <div class="filters" role="group" aria-label="Фильтр задач">
+      <button
+          type="button"
+          class="filter-button"
+          data-filter="all"
+          aria-pressed="true"
+      >Все</button>
 
-    <p id="task-counter" aria-live="polite"></p>
-    <p id="empty-message">Пока задач нет. Добавь первую!</p>
+      <button
+          type="button"
+          class="filter-button"
+          data-filter="active"
+          aria-pressed="false"
+      >Активные</button>
+
+      <button
+          type="button"
+          class="filter-button"
+          data-filter="completed"
+          aria-pressed="false"
+      >Выполненные</button>
+    </div>
+
+    <ul id="task-list"></ul>
+    <p id="empty-message"></p>
+
+    <footer class="summary">
+      <p id="task-counter" aria-live="polite"></p>
+
+      <button
+          id="clear-completed"
+          class="delete-button"
+          type="button"
+      >Удалить выполненные</button>
+    </footer>
   </main>
 </body>
 </html>
