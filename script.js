@@ -2,6 +2,7 @@ const form = document.querySelector("#task-form");
 const input = document.querySelector("#task-input");
 const list = document.querySelector("#task-list");
 const emptyMessage = document.querySelector("#empty-message");
+const taskCounter = document.querySelector("#task-counter");
 
 const storageKey = "my-todo-tasks";
 let tasks = loadTasks();
@@ -33,7 +34,11 @@ function saveTasks() {
 
 function renderTasks() {
   list.replaceChildren();
+
   emptyMessage.hidden = tasks.length > 0;
+
+  const remaining = tasks.filter(task => !task.completed).length;
+  taskCounter.textContent = `Осталось задач: ${remaining}`;
 
   tasks.forEach(task => {
     const item = document.createElement("li");
@@ -58,7 +63,10 @@ function renderTasks() {
     deleteButton.type = "button";
     deleteButton.className = "delete-button";
     deleteButton.textContent = "Удалить";
-    deleteButton.setAttribute("aria-label", `Удалить задачу: ${task.text}`);
+    deleteButton.setAttribute(
+      "aria-label",
+      `Удалить задачу: ${task.text}`
+    );
 
     deleteButton.addEventListener("click", () => {
       tasks = tasks.filter(item => item.id !== task.id);
