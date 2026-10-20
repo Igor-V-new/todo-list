@@ -1,1 +1,33 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Мои задачи</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="script.js" defer></script>
+</head>
+<body>
+  <main class="app">
+    <h1>Мои задачи</h1>
 
+    <form id="task-form">
+      <label for="task-input">Новая задача</label>
+
+      <div class="input-row">
+        <input
+          id="task-input"
+          type="text"
+          placeholder="Например, прочитать 10 страниц"
+          maxlength="200"
+          required
+        >
+        <button type="submit">Добавить</button>
+      </div>
+    </form>
+
+    <ul id="task-list"></ul>
+    <p id="empty-message">Пока задач нет. Добавь первую!</p>
+  </main>
+</body>
+</html>
