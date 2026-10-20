@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light dark">
 
   <title>Мои задачи</title>
 
@@ -12,109 +13,302 @@
 
 <body>
   <main class="app">
-    <h1>Мои задачи</h1>
-
-    <form id="task-form">
-      <label for="task-input">Новая задача</label>
-
-      <div class="input-row">
-        <input
-          id="task-input"
-          name="task"
-          type="text"
-          placeholder="Что нужно сделать?"
-          maxlength="200"
-          required
-        >
-
-        <button type="submit">Добавить</button>
+    <header class="header">
+      <div>
+        <p class="eyebrow">ЛИЧНЫЙ ПЛАНЕР</p>
+        <h1>Мои задачи<span class="title-dot">.</span></h1>
+        <p class="subtitle">Освободи голову. Сосредоточься на важном.</p>
       </div>
 
-      <div class="options">
-        <div class="field">
-          <label for="task-date">Срок выполнения</label>
+      <button
+        id="theme-toggle"
+        class="button button-secondary"
+        type="button"
+        aria-label="Переключить тему"
+      >
+        Тёмная тема
+      </button>
+    </header>
 
+    <section class="overview" aria-label="Статистика задач">
+      <div class="stat">
+        <span class="stat-label">Всего задач</span>
+        <strong id="total-count">0</strong>
+      </div>
+
+      <div class="stat">
+        <span class="stat-label">Осталось</span>
+        <strong id="active-count">0</strong>
+      </div>
+
+      <div class="stat">
+        <span class="stat-label">Выполнено</span>
+        <strong id="completed-count">0</strong>
+      </div>
+
+      <div class="stat">
+        <span class="stat-label">Просрочено</span>
+        <strong id="overdue-count" class="danger-text">0</strong>
+      </div>
+    </section>
+
+    <section class="panel composer" aria-labelledby="composer-title">
+      <h2 id="composer-title">Что нужно сделать?</h2>
+
+      <form id="task-form">
+        <label class="sr-only" for="task-input">Текст новой задачи</label>
+
+        <div class="composer-row">
           <input
-            id="task-date"
-            name="due-date"
-            type="date"
+            id="task-input"
+            name="task"
+            type="text"
+            placeholder="Например, закончить первый проект"
+            maxlength="200"
+            autocomplete="off"
+            required
+          >
+
+          <button class="button button-primary" type="submit">
+            + Добавить
+          </button>
+        </div>
+
+        <div class="composer-options">
+          <div class="field">
+            <label for="task-date">Срок выполнения</label>
+            <input
+              id="task-date"
+              name="due-date"
+              type="date"
+              min="0001-01-01"
+              max="9999-12-31"
+            >
+          </div>
+
+          <div class="field">
+            <label for="task-priority">Приоритет</label>
+            <select id="task-priority" name="priority">
+              <option value="normal">Обычный</option>
+              <option value="important">Важный</option>
+              <option value="urgent">Срочный</option>
+            </select>
+          </div>
+
+          <p class="keyboard-hint">
+            <kbd>Ctrl</kbd> + <kbd>Enter</kbd> — добавить
+          </p>
+        </div>
+      </form>
+    </section>
+
+    <section class="panel workspace" aria-labelledby="list-title">
+      <div class="section-heading">
+        <h2 id="list-title">Список задач</h2>
+        <span id="results-count" class="muted"></span>
+      </div>
+
+      <div class="tools">
+        <div class="search-field">
+          <label class="sr-only" for="search-input">Поиск задач</label>
+          <input
+            id="search-input"
+            type="search"
+            placeholder="Найти задачу…"
+            autocomplete="off"
+            maxlength="200"
           >
         </div>
 
-        <div class="field">
-          <label for="task-priority">Приоритет</label>
-
-          <select id="task-priority" name="priority">
-            <option value="normal">Обычный</option>
-            <option value="important">Важный</option>
-            <option value="urgent">Срочный</option>
+        <div class="sort-field">
+          <label class="sr-only" for="sort-select">Сортировка задач</label>
+          <select id="sort-select">
+            <option value="newest">Сначала новые</option>
+            <option value="oldest">Сначала старые</option>
+            <option value="deadline">По сроку</option>
+            <option value="priority">По приоритету</option>
+            <option value="alphabet">По названию</option>
           </select>
         </div>
       </div>
-    </form>
 
-    <div
-      class="filters"
-      role="group"
-      aria-label="Фильтр задач"
-    >
-      <button
-        type="button"
-        class="filter-button"
-        data-filter="all"
-        aria-pressed="true"
-        aria-controls="task-list"
-      >
-        Все
-      </button>
+      <div class="filters" role="group" aria-label="Фильтр задач">
+        <button
+          class="filter-button"
+          type="button"
+          data-filter="all"
+          aria-pressed="true"
+          aria-controls="task-list"
+        >Все</button>
 
-      <button
-        type="button"
-        class="filter-button"
-        data-filter="active"
-        aria-pressed="false"
-        aria-controls="task-list"
-      >
-        Активные
-      </button>
+        <button
+          class="filter-button"
+          type="button"
+          data-filter="active"
+          aria-pressed="false"
+          aria-controls="task-list"
+        >Активные</button>
 
-      <button
-        type="button"
-        class="filter-button"
-        data-filter="completed"
-        aria-pressed="false"
-        aria-controls="task-list"
-      >
-        Выполненные
-      </button>
-    </div>
+        <button
+          class="filter-button"
+          type="button"
+          data-filter="completed"
+          aria-pressed="false"
+          aria-controls="task-list"
+        >Выполненные</button>
 
-    <ul id="task-list" aria-label="Список задач"></ul>
+        <button
+          class="filter-button"
+          type="button"
+          data-filter="overdue"
+          aria-pressed="false"
+          aria-controls="task-list"
+        >Просроченные</button>
+      </div>
 
-    <p id="empty-message"></p>
+      <ul id="task-list" aria-label="Задачи"></ul>
 
-    <footer class="summary">
-      <p
-        id="task-counter"
-        aria-live="polite"
-        aria-atomic="true"
-      ></p>
+      <div id="empty-state" class="empty-state">
+        <span class="empty-icon" aria-hidden="true">✓</span>
+        <h3 id="empty-title">Здесь начнётся твой план</h3>
+        <p id="empty-description">Добавь первую задачу в форме выше.</p>
+      </div>
 
-      <button
-        id="clear-completed"
-        class="delete-button"
-        type="button"
-        disabled
-      >
-        Удалить выполненные
-      </button>
+      <div class="list-footer">
+        <button
+          id="toggle-visible"
+          class="button button-secondary"
+          type="button"
+          disabled
+        >
+          Выполнить показанные
+        </button>
+
+        <button
+          id="clear-completed"
+          class="button button-danger"
+          type="button"
+          disabled
+        >
+          Удалить выполненные
+        </button>
+      </div>
+    </section>
+
+    <section class="panel progress-panel" aria-labelledby="progress-title">
+      <div class="section-heading">
+        <h2 id="progress-title">Твой прогресс</h2>
+        <strong id="progress-text">0%</strong>
+      </div>
+
+      <progress id="progress-bar" value="0" max="100">
+        0%
+      </progress>
+
+      <p id="task-counter" class="muted"></p>
+    </section>
+
+    <footer class="app-footer">
+      <div class="backup-actions">
+        <button
+          id="export-button"
+          class="button button-secondary"
+          type="button"
+        >Скачать задачи</button>
+
+        <button
+          id="import-button"
+          class="button button-secondary"
+          type="button"
+        >Загрузить из файла</button>
+
+        <input
+          id="import-file"
+          type="file"
+          accept=".json,application/json"
+          hidden
+        >
+      </div>
+
+      <p class="footer-note">
+        Задачи хранятся в этом браузере. Скачивай резервную копию.
+        Клавиша / открывает поиск.
+      </p>
     </footer>
 
-    <noscript>
-      <p>
-        Для работы списка задач включи JavaScript в настройках браузера.
+    <div class="notice">
+      <p id="status-message" role="status" aria-live="polite">
+        Готово к работе.
       </p>
+
+      <button
+        id="undo-button"
+        class="button button-secondary"
+        type="button"
+        disabled
+      >Отменить</button>
+    </div>
+
+    <noscript>
+      <p>Для работы приложения нужно включить JavaScript.</p>
     </noscript>
   </main>
+
+  <dialog id="edit-dialog" aria-labelledby="edit-title">
+    <form id="edit-form">
+      <div class="section-heading">
+        <h2 id="edit-title">Редактировать задачу</h2>
+
+        <button
+          id="close-edit"
+          class="button button-secondary"
+          type="button"
+          aria-label="Закрыть окно редактирования"
+        >✕</button>
+      </div>
+
+      <div class="field">
+        <label for="edit-text">Текст задачи</label>
+        <input
+          id="edit-text"
+          type="text"
+          maxlength="200"
+          required
+          autofocus
+        >
+      </div>
+
+      <div class="field">
+        <label for="edit-date">Срок выполнения</label>
+        <input
+          id="edit-date"
+          type="date"
+          min="0001-01-01"
+          max="9999-12-31"
+        >
+      </div>
+
+      <div class="field">
+        <label for="edit-priority">Приоритет</label>
+        <select id="edit-priority">
+          <option value="normal">Обычный</option>
+          <option value="important">Важный</option>
+          <option value="urgent">Срочный</option>
+        </select>
+      </div>
+
+      <div class="dialog-actions">
+        <button
+          id="cancel-edit"
+          class="button button-secondary"
+          type="button"
+        >Отмена</button>
+
+        <button class="button button-primary" type="submit">
+          Сохранить
+        </button>
+      </div>
+    </form>
+  </dialog>
 </body>
 </html>
