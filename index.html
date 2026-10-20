@@ -3,10 +3,13 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
   <title>Мои задачи</title>
-  <link rel="stylesheet" href="style.css">
-  <script src="script.js" defer></script>
+
+  <link rel="stylesheet" href="./style.css">
+  <script src="./script.js" defer></script>
 </head>
+
 <body>
   <main class="app">
     <h1>Мои задачи</h1>
@@ -17,23 +20,31 @@
       <div class="input-row">
         <input
           id="task-input"
+          name="task"
           type="text"
           placeholder="Что нужно сделать?"
           maxlength="200"
           required
         >
+
         <button type="submit">Добавить</button>
       </div>
 
       <div class="options">
         <div class="field">
           <label for="task-date">Срок выполнения</label>
-          <input id="task-date" type="date">
+
+          <input
+            id="task-date"
+            name="due-date"
+            type="date"
+          >
         </div>
 
         <div class="field">
           <label for="task-priority">Приоритет</label>
-          <select id="task-priority">
+
+          <select id="task-priority" name="priority">
             <option value="normal">Обычный</option>
             <option value="important">Важный</option>
             <option value="urgent">Срочный</option>
@@ -42,41 +53,68 @@
       </div>
     </form>
 
-    <div class="filters" role="group" aria-label="Фильтр задач">
+    <div
+      class="filters"
+      role="group"
+      aria-label="Фильтр задач"
+    >
       <button
-          type="button"
-          class="filter-button"
-          data-filter="all"
-          aria-pressed="true"
-      >Все</button>
+        type="button"
+        class="filter-button"
+        data-filter="all"
+        aria-pressed="true"
+        aria-controls="task-list"
+      >
+        Все
+      </button>
 
       <button
-          type="button"
-          class="filter-button"
-          data-filter="active"
-          aria-pressed="false"
-      >Активные</button>
+        type="button"
+        class="filter-button"
+        data-filter="active"
+        aria-pressed="false"
+        aria-controls="task-list"
+      >
+        Активные
+      </button>
 
       <button
-          type="button"
-          class="filter-button"
-          data-filter="completed"
-          aria-pressed="false"
-      >Выполненные</button>
+        type="button"
+        class="filter-button"
+        data-filter="completed"
+        aria-pressed="false"
+        aria-controls="task-list"
+      >
+        Выполненные
+      </button>
     </div>
 
-    <ul id="task-list"></ul>
+    <ul id="task-list" aria-label="Список задач"></ul>
+
     <p id="empty-message"></p>
 
     <footer class="summary">
-      <p id="task-counter" aria-live="polite"></p>
+      <p
+        id="task-counter"
+        aria-live="polite"
+        aria-atomic="true"
+      ></p>
 
       <button
-          id="clear-completed"
-          class="delete-button"
-          type="button"
-      >Удалить выполненные</button>
+        id="clear-completed"
+        class="delete-button"
+        type="button"
+        disabled
+      >
+        Удалить выполненные
+      </button>
     </footer>
+
+    <noscript>
+      <p>
+        Для работы списка задач включи JavaScript в настройках браузера.
+      </p>
+    </noscript>
   </main>
 </body>
 </html>
