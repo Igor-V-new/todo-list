@@ -2,11 +2,9 @@
 <html lang="ru">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
-
   <title>Мои задачи</title>
-
   <link rel="stylesheet" href="./style.css">
   <script src="./script.js" defer></script>
 </head>
@@ -16,70 +14,59 @@
     <header class="header">
       <div>
         <p class="eyebrow">ЛИЧНЫЙ ПЛАНЕР</p>
-        <h1>Мои задачи<span class="title-dot">.</span></h1>
-        <p class="subtitle">Освободи голову. Сосредоточься на важном.</p>
+        <h1>Мои задачи<span>.</span></h1>
+        <p class="muted">Меньше суеты. Больше сделанного.</p>
       </div>
 
-      <button
-        id="theme-toggle"
-        class="button button-secondary"
-        type="button"
-        aria-label="Переключить тему"
-      >
-        Тёмная тема
+      <button id="theme-toggle" class="button secondary" type="button">
+        Сменить тему
       </button>
     </header>
 
-    <section class="overview" aria-label="Статистика задач">
+    <section class="stats" aria-label="Статистика">
       <div class="stat">
-        <span class="stat-label">Всего задач</span>
+        <span>Всего вне архива</span>
         <strong id="total-count">0</strong>
       </div>
-
       <div class="stat">
-        <span class="stat-label">Осталось</span>
+        <span>Осталось</span>
         <strong id="active-count">0</strong>
       </div>
-
       <div class="stat">
-        <span class="stat-label">Выполнено</span>
+        <span>Выполнено</span>
         <strong id="completed-count">0</strong>
       </div>
-
       <div class="stat">
-        <span class="stat-label">Просрочено</span>
-        <strong id="overdue-count" class="danger-text">0</strong>
+        <span>Просрочено</span>
+        <strong id="overdue-count">0</strong>
       </div>
     </section>
 
-    <section class="panel composer" aria-labelledby="composer-title">
-      <h2 id="composer-title">Что нужно сделать?</h2>
+    <section class="panel" aria-labelledby="new-title">
+      <div class="section-heading">
+        <h2 id="new-title">Новая задача</h2>
+        <span id="draft-status" class="muted small"></span>
+      </div>
 
       <form id="task-form">
-        <label class="sr-only" for="task-input">Текст новой задачи</label>
+        <label class="sr-only" for="task-input">Название задачи</label>
 
-        <div class="composer-row">
+        <div class="input-row">
           <input
             id="task-input"
-            name="task"
             type="text"
-            placeholder="Например, закончить первый проект"
+            placeholder="Что нужно сделать?"
             maxlength="200"
-            autocomplete="off"
             required
           >
-
-          <button class="button button-primary" type="submit">
-            + Добавить
-          </button>
+          <button class="button primary" type="submit">+ Добавить</button>
         </div>
 
-        <div class="composer-options">
+        <div class="form-grid">
           <div class="field">
-            <label for="task-date">Срок выполнения</label>
+            <label for="task-date">Срок</label>
             <input
               id="task-date"
-              name="due-date"
               type="date"
               min="0001-01-01"
               max="9999-12-31"
@@ -88,40 +75,107 @@
 
           <div class="field">
             <label for="task-priority">Приоритет</label>
-            <select id="task-priority" name="priority">
+            <select id="task-priority">
               <option value="normal">Обычный</option>
               <option value="important">Важный</option>
               <option value="urgent">Срочный</option>
             </select>
           </div>
 
-          <p class="keyboard-hint">
-            <kbd>Ctrl</kbd> + <kbd>Enter</kbd> — добавить
-          </p>
+          <div class="field">
+            <label for="task-category">Категория</label>
+            <select id="task-category">
+              <option value="personal">Личное</option>
+              <option value="work">Работа</option>
+              <option value="study">Учёба</option>
+              <option value="home">Дом</option>
+              <option value="health">Здоровье</option>
+              <option value="other">Другое</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label for="task-repeat">Повторение</label>
+            <select id="task-repeat">
+              <option value="none">Не повторять</option>
+              <option value="daily">Каждый день</option>
+              <option value="weekly">Каждую неделю</option>
+              <option value="monthly">Каждый месяц</option>
+            </select>
+          </div>
         </div>
+
+        <details class="extra-fields">
+          <summary>Заметка и подзадачи</summary>
+
+          <div class="field">
+            <label for="task-notes">Заметка</label>
+            <textarea
+              id="task-notes"
+              rows="3"
+              maxlength="3000"
+              placeholder="Ссылки, детали, мысли…"
+            ></textarea>
+          </div>
+
+          <div class="field">
+            <label for="task-subtasks">Подзадачи — каждая с новой строки</label>
+            <textarea
+              id="task-subtasks"
+              rows="3"
+              maxlength="6500"
+              placeholder="Подготовить материалы&#10;Проверить результат"
+            ></textarea>
+          </div>
+        </details>
+
+        <p class="hint">
+          Ctrl + Enter — добавить. Для повторяющейся задачи укажи срок.
+        </p>
       </form>
     </section>
 
-    <section class="panel workspace" aria-labelledby="list-title">
+    <section class="panel" aria-labelledby="list-title">
       <div class="section-heading">
-        <h2 id="list-title">Список задач</h2>
-        <span id="results-count" class="muted"></span>
+        <div>
+          <h2 id="list-title">Список задач</h2>
+          <span id="results-count" class="muted small"></span>
+        </div>
+
+        <button
+          id="focus-toggle"
+          class="button secondary"
+          type="button"
+          aria-pressed="false"
+        >Режим фокуса</button>
       </div>
 
       <div class="tools">
-        <div class="search-field">
-          <label class="sr-only" for="search-input">Поиск задач</label>
+        <div class="search">
+          <label class="sr-only" for="search-input">Поиск</label>
           <input
             id="search-input"
             type="search"
-            placeholder="Найти задачу…"
-            autocomplete="off"
+            placeholder="Поиск по названию, заметке и подзадачам…"
             maxlength="200"
           >
         </div>
 
-        <div class="sort-field">
-          <label class="sr-only" for="sort-select">Сортировка задач</label>
+        <div>
+          <label class="sr-only" for="category-filter">Категория</label>
+          <select id="category-filter">
+            <option value="all">Все категории</option>
+            <option value="personal">Личное</option>
+            <option value="work">Работа</option>
+            <option value="study">Учёба</option>
+            <option value="home">Дом</option>
+            <option value="health">Здоровье</option>
+            <option value="other">Другое</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="sr-only" for="sort-select">Сортировка</label>
           <select id="sort-select">
             <option value="newest">Сначала новые</option>
             <option value="oldest">Сначала старые</option>
@@ -133,106 +187,83 @@
       </div>
 
       <div class="filters" role="group" aria-label="Фильтр задач">
-        <button
-          class="filter-button"
-          type="button"
-          data-filter="all"
-          aria-pressed="true"
-          aria-controls="task-list"
-        >Все</button>
-
-        <button
-          class="filter-button"
-          type="button"
-          data-filter="active"
-          aria-pressed="false"
-          aria-controls="task-list"
-        >Активные</button>
-
-        <button
-          class="filter-button"
-          type="button"
-          data-filter="completed"
-          aria-pressed="false"
-          aria-controls="task-list"
-        >Выполненные</button>
-
-        <button
-          class="filter-button"
-          type="button"
-          data-filter="overdue"
-          aria-pressed="false"
-          aria-controls="task-list"
-        >Просроченные</button>
+        <button type="button" data-filter="all" aria-pressed="true">Все</button>
+        <button type="button" data-filter="active" aria-pressed="false">Активные</button>
+        <button type="button" data-filter="today" aria-pressed="false">Сегодня</button>
+        <button type="button" data-filter="week" aria-pressed="false">7 дней</button>
+        <button type="button" data-filter="overdue" aria-pressed="false">Просроченные</button>
+        <button type="button" data-filter="completed" aria-pressed="false">Выполненные</button>
+        <button type="button" data-filter="archived" aria-pressed="false">Архив</button>
       </div>
 
-      <ul id="task-list" aria-label="Задачи"></ul>
+      <div class="selection-toolbar">
+        <label class="check-label">
+          <input id="select-visible" type="checkbox">
+          Выбрать показанные
+        </label>
+        <span id="selected-count" class="muted small">Выбрано: 0</span>
+      </div>
 
-      <div id="empty-state" class="empty-state">
+      <div id="bulk-actions" class="bulk-actions" hidden>
+        <button id="bulk-complete" class="button secondary" type="button">
+          Выполнить
+        </button>
+        <button id="bulk-archive" class="button secondary" type="button">
+          В архив
+        </button>
+        <button id="bulk-delete" class="button danger" type="button">
+          Удалить
+        </button>
+        <button id="clear-selection" class="button secondary" type="button">
+          Снять выбор
+        </button>
+      </div>
+
+      <ul id="task-list" aria-label="Список задач"></ul>
+
+      <div id="empty-state" class="empty-state" hidden>
         <span class="empty-icon" aria-hidden="true">✓</span>
-        <h3 id="empty-title">Здесь начнётся твой план</h3>
-        <p id="empty-description">Добавь первую задачу в форме выше.</p>
+        <h3 id="empty-title">Задач пока нет</h3>
+        <p id="empty-description">Добавь первую задачу выше.</p>
       </div>
 
       <div class="list-footer">
-        <button
-          id="toggle-visible"
-          class="button button-secondary"
-          type="button"
-          disabled
-        >
+        <button id="toggle-visible" class="button secondary" type="button">
           Выполнить показанные
         </button>
-
-        <button
-          id="clear-completed"
-          class="button button-danger"
-          type="button"
-          disabled
-        >
+        <button id="clear-completed" class="button danger" type="button">
           Удалить выполненные
         </button>
       </div>
     </section>
 
-    <section class="panel progress-panel" aria-labelledby="progress-title">
+    <section class="panel" aria-labelledby="progress-title">
       <div class="section-heading">
-        <h2 id="progress-title">Твой прогресс</h2>
+        <h2 id="progress-title">Прогресс</h2>
         <strong id="progress-text">0%</strong>
       </div>
 
-      <progress id="progress-bar" value="0" max="100">
-        0%
-      </progress>
-
-      <p id="task-counter" class="muted"></p>
+      <progress id="progress-bar" value="0" max="100">0%</progress>
+      <p id="task-counter" class="muted small"></p>
     </section>
 
     <footer class="app-footer">
       <div class="backup-actions">
-        <button
-          id="export-button"
-          class="button button-secondary"
-          type="button"
-        >Скачать задачи</button>
-
-        <button
-          id="import-button"
-          class="button button-secondary"
-          type="button"
-        >Загрузить из файла</button>
-
-        <input
-          id="import-file"
-          type="file"
-          accept=".json,application/json"
-          hidden
-        >
+        <button id="export-button" class="button secondary" type="button">
+          Скачать JSON
+        </button>
+        <button id="csv-button" class="button secondary" type="button">
+          Скачать CSV
+        </button>
+        <button id="import-button" class="button secondary" type="button">
+          Загрузить JSON
+        </button>
+        <input id="import-file" type="file" accept=".json,application/json" hidden>
       </div>
 
-      <p class="footer-note">
-        Задачи хранятся в этом браузере. Скачивай резервную копию.
-        Клавиша / открывает поиск.
+      <p class="muted small">
+        Данные остаются в этом браузере. JSON — полная резервная копия.
+        CSV — таблица для просмотра. Клавиша / открывает поиск.
       </p>
     </footer>
 
@@ -241,16 +272,18 @@
         Готово к работе.
       </p>
 
-      <button
-        id="undo-button"
-        class="button button-secondary"
-        type="button"
-        disabled
-      >Отменить</button>
+      <div class="history-actions">
+        <button id="undo-button" class="button secondary" type="button" disabled>
+          Отменить
+        </button>
+        <button id="redo-button" class="button secondary" type="button" disabled>
+          Повторить
+        </button>
+      </div>
     </div>
 
     <noscript>
-      <p>Для работы приложения нужно включить JavaScript.</p>
+      <p>Включи JavaScript для работы приложения.</p>
     </noscript>
   </main>
 
@@ -258,55 +291,81 @@
     <form id="edit-form">
       <div class="section-heading">
         <h2 id="edit-title">Редактировать задачу</h2>
-
         <button
           id="close-edit"
-          class="button button-secondary"
+          class="button secondary"
           type="button"
-          aria-label="Закрыть окно редактирования"
+          aria-label="Закрыть"
         >✕</button>
       </div>
 
       <div class="field">
-        <label for="edit-text">Текст задачи</label>
-        <input
-          id="edit-text"
-          type="text"
-          maxlength="200"
-          required
-          autofocus
-        >
+        <label for="edit-text">Название</label>
+        <input id="edit-text" type="text" maxlength="200" required autofocus>
+      </div>
+
+      <div class="form-grid">
+        <div class="field">
+          <label for="edit-date">Срок</label>
+          <input
+            id="edit-date"
+            type="date"
+            min="0001-01-01"
+            max="9999-12-31"
+          >
+        </div>
+
+        <div class="field">
+          <label for="edit-priority">Приоритет</label>
+          <select id="edit-priority">
+            <option value="normal">Обычный</option>
+            <option value="important">Важный</option>
+            <option value="urgent">Срочный</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="edit-category">Категория</label>
+          <select id="edit-category">
+            <option value="personal">Личное</option>
+            <option value="work">Работа</option>
+            <option value="study">Учёба</option>
+            <option value="home">Дом</option>
+            <option value="health">Здоровье</option>
+            <option value="other">Другое</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="edit-repeat">Повторение</label>
+          <select id="edit-repeat">
+            <option value="none">Не повторять</option>
+            <option value="daily">Каждый день</option>
+            <option value="weekly">Каждую неделю</option>
+            <option value="monthly">Каждый месяц</option>
+          </select>
+        </div>
       </div>
 
       <div class="field">
-        <label for="edit-date">Срок выполнения</label>
-        <input
-          id="edit-date"
-          type="date"
-          min="0001-01-01"
-          max="9999-12-31"
-        >
+        <label for="edit-notes">Заметка</label>
+        <textarea id="edit-notes" rows="4" maxlength="3000"></textarea>
       </div>
 
       <div class="field">
-        <label for="edit-priority">Приоритет</label>
-        <select id="edit-priority">
-          <option value="normal">Обычный</option>
-          <option value="important">Важный</option>
-          <option value="urgent">Срочный</option>
-        </select>
+        <label for="edit-subtasks">Подзадачи — каждая с новой строки</label>
+        <textarea id="edit-subtasks" rows="4" maxlength="6500"></textarea>
+        <p class="hint">
+          Неизменённые подзадачи сохранят свои галочки.
+          Максимум 30 подзадач по 200 символов.
+        </p>
       </div>
 
       <div class="dialog-actions">
-        <button
-          id="cancel-edit"
-          class="button button-secondary"
-          type="button"
-        >Отмена</button>
-
-        <button class="button button-primary" type="submit">
-          Сохранить
+        <button id="cancel-edit" class="button secondary" type="button">
+          Отмена
         </button>
+        <button class="button primary" type="submit">Сохранить</button>
       </div>
     </form>
   </dialog>
